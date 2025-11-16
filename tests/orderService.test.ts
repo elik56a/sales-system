@@ -1,232 +1,342 @@
 import { orderService } from "../src/services/orderService";
 import { inventoryService } from "../src/services/inventoryService";
 import { db } from "../src/database/connection";
-import { orders, outboxEvents } from "../src/database/schema";
-import { ORDER_STATUS, OrderErrorCode } from "../src/types";
+import { ORDER_STATUS, OrderErrorCode, OrderItem } from "../src/types";
 
-// Mock dependencies
+// Mock all external dependencies
 jest.mock("../src/services/inventoryService");
 jest.mock("../src/database/connection");
-jest.mock("../src/monitoring/logger", () => ({
-  logger: {
-    child: jest.fn(() => ({
+jest.mock("../src/monitoring/logger", () => {
+  const mockChildLogger = {
+    info: jest.fn(),
+    error: jest.fn(),
+    warn: jest.fn(),
+    debug: jest.fn(),
+  };
+
+  return {
+    logger: {
       info: jest.fn(),
       error: jest.fn(),
       warn: jest.fn(),
-    })),
-  },
-}));
+      debug: jest.fn(),
+      child: jest.fn(() => mockChildLogger),
+    },
+  };
+});
 
+// Type the mocked services
 const mockInventoryService = inventoryService as jest.Mocked<
   typeof inventoryService
 >;
 const mockDb = db as jest.Mocked<typeof db>;
 
 describe("OrderService", () => {
+  const validOrderRequest = {
+    customerId: "customer-123",
+    items: [
+      { productId: "product-1", quantity: 2, price: 10.0 },
+      { productId: "product-2", quantity: 1, price: 15.0 },
+    ] as OrderItem[],
+  };
+
+  const mockOrder = {
+    id: "order-123",
+    customerId: "customer-123",
+    items: validOrderRequest.items,
+    totalAmount: "35.00",
+    status: ORDER_STATUS.PENDING_SHIPMENT,
+    createdAt: new Date("2024-01-01T10:00:00Z"),
+    updatedAt: new Date("2024-01-01T10:00:00Z"),
+    idempotencyKey: null,
+  };
+
   beforeEach(() => {
     jest.clearAllMocks();
   });
 
   describe("createOrder", () => {
-    const validOrderRequest = {
-      customerId: "customer-123",
-      items: [
-        { productId: "product-1", quantity: 2, price: 10.0 },
-        { productId: "product-2", quantity: 1, price: 15.0 },
-      ],
-    };
+    describe("Success Cases", () => {
+      it("should create order successfully when all items are available", async () => {
+        // Arrange
+        mockInventoryService.checkBatchAvailability.mockResolvedValue([
+          { available: true, productId: "product-1", availableQuantity: 10 },
+          { available: true, productId: "product-2", availableQuantity: 5 },
+        ]);
 
-    it("should create order successfully when inventory is available", async () => {
-      // Mock inventory check
-      mockInventoryService.checkBatchAvailability.mockResolvedValue([
-        { available: true, productId: "product-1", availableQuantity: 10 },
-        { available: true, productId: "product-2", availableQuantity: 5 },
-      ]);
-
-      // Mock database transaction
-      const mockOrder = {
-        id: "order-123",
-        customerId: "customer-123",
-        items: validOrderRequest.items,
-        totalAmount: "35.00",
-        status: ORDER_STATUS.PENDING_SHIPMENT,
-        createdAt: new Date(),
-      };
-
-      mockDb.transaction.mockImplementation(async (callback) => {
-        const mockTx = {
-          insert: jest.fn().mockReturnValue({
-            values: jest.fn().mockReturnValue({
-              returning: jest.fn().mockResolvedValue([mockOrder]),
+        mockDb.transaction.mockImplementation(async (callback) => {
+          const mockTx = {
+            insert: jest.fn().mockReturnValue({
+              values: jest.fn().mockReturnValue({
+                returning: jest.fn().mockResolvedValue([mockOrder]),
+              }),
             }),
-          }),
-        };
-        return callback(mockTx as any);
+          };
+          return callback(mockTx as any);
+        });
+
+        // Act
+        const result = await orderService.createOrder(validOrderRequest);
+
+        // Assert
+        expect(result.success).toBe(true);
+        expect(result.order).toBeDefined();
+        expect(result.order?.orderId).toBe("order-123");
+        expect(result.order?.status).toBe(ORDER_STATUS.PENDING_SHIPMENT);
+        expect(result.order?.totalAmount).toBe(35.0);
+        expect(result.order?.customerId).toBe("customer-123");
+        expect(result.order?.items).toEqual(validOrderRequest.items);
+
+        // Verify inventory was checked
+        expect(
+          mockInventoryService.checkBatchAvailability
+        ).toHaveBeenCalledWith([
+          { productId: "product-1", quantity: 2 },
+          { productId: "product-2", quantity: 1 },
+        ]);
+
+        // Verify transaction was called
+        expect(mockDb.transaction).toHaveBeenCalled();
       });
 
-      const result = await orderService.createOrder(validOrderRequest);
+      it("should return existing order when idempotency key matches", async () => {
+        // Arrange
+        const existingOrder = {
+          id: "existing-order-456",
+          customerId: "customer-123",
+          status: ORDER_STATUS.PENDING_SHIPMENT,
+          totalAmount: "35.00",
+          createdAt: new Date("2024-01-01T09:00:00Z"),
+          items: validOrderRequest.items,
+        };
 
-      expect(result.success).toBe(true);
-      expect(result.order?.orderId).toBe("order-123");
-      expect(result.order?.status).toBe(ORDER_STATUS.PENDING_SHIPMENT);
-      expect(result.order?.totalAmount).toBe(35.0);
+        mockDb.query = {
+          orders: {
+            findFirst: jest.fn().mockResolvedValue(existingOrder),
+          },
+        } as any;
+
+        // Act
+        const result = await orderService.createOrder(
+          validOrderRequest,
+          "duplicate-key-123"
+        );
+
+        // Assert
+        expect(result.success).toBe(true);
+        expect(result.order?.orderId).toBe("existing-order-456");
+
+        // Should not check inventory or create new order
+        expect(
+          mockInventoryService.checkBatchAvailability
+        ).not.toHaveBeenCalled();
+        expect(mockDb.transaction).not.toHaveBeenCalled();
+      });
     });
 
-    it("should fail when inventory is insufficient", async () => {
-      // Mock inventory check with insufficient stock
-      mockInventoryService.checkBatchAvailability.mockResolvedValue([
-        { available: false, productId: "product-1", availableQuantity: 1 },
-        { available: true, productId: "product-2", availableQuantity: 5 },
-      ]);
+    describe("Inventory Validation", () => {
+      it("should fail when some items are not available", async () => {
+        // Arrange
+        mockInventoryService.checkBatchAvailability.mockResolvedValue([
+          { available: false, productId: "product-1", availableQuantity: 1 }, // Not enough
+          { available: true, productId: "product-2", availableQuantity: 5 }, // Available
+        ]);
 
-      const result = await orderService.createOrder(validOrderRequest);
+        // Act
+        const result = await orderService.createOrder(validOrderRequest);
 
-      expect(result.success).toBe(false);
-      expect(result.error?.code).toBe(OrderErrorCode.INSUFFICIENT_INVENTORY);
-      expect(result.error?.details).toHaveLength(1);
-      expect(result.error?.details[0].productId).toBe("product-1");
-    });
+        // Assert
+        expect(result.success).toBe(false);
+        expect(result.error?.code).toBe(OrderErrorCode.INSUFFICIENT_INVENTORY);
+        expect(result.error?.message).toBe(
+          "Some items are not available in requested quantities"
+        );
+        expect(result.error?.details).toHaveLength(1);
+        expect(result.error?.details?.[0]).toEqual({
+          productId: "product-1",
+          requested: 2,
+          available: 1,
+        });
 
-    it("should return existing order for duplicate idempotency key", async () => {
-      const existingOrder = {
-        id: "existing-order",
-        customerId: "customer-123",
-        status: ORDER_STATUS.PENDING_SHIPMENT,
-        totalAmount: "35.00",
-        createdAt: new Date(),
-      };
+        // Should not create order
+        expect(mockDb.transaction).not.toHaveBeenCalled();
+      });
 
-      mockDb.query = {
-        orders: {
-          findFirst: jest.fn().mockResolvedValue(existingOrder),
-        },
-      } as any;
+      it("should handle inventory service errors gracefully", async () => {
+        // Arrange
+        mockInventoryService.checkBatchAvailability.mockRejectedValue(
+          new Error("Inventory service timeout")
+        );
 
-      const result = await orderService.createOrder(
-        validOrderRequest,
-        "duplicate-key"
-      );
+        // Act
+        const result = await orderService.createOrder(validOrderRequest);
 
-      expect(result.success).toBe(true);
-      expect(result.order?.orderId).toBe("existing-order");
-      expect(
-        mockInventoryService.checkBatchAvailability
-      ).not.toHaveBeenCalled();
-    });
-
-    it("should handle inventory service errors", async () => {
-      mockInventoryService.checkBatchAvailability.mockRejectedValue(
-        new Error("Service unavailable")
-      );
-
-      const result = await orderService.createOrder(validOrderRequest);
-
-      expect(result.success).toBe(false);
-      expect(result.error?.code).toBe(
-        OrderErrorCode.INVENTORY_SERVICE_UNAVAILABLE
-      );
+        // Assert
+        expect(result.success).toBe(false);
+        expect(result.error?.code).toBe(
+          OrderErrorCode.INVENTORY_SERVICE_UNAVAILABLE
+        );
+        expect(result.error?.message).toBe(
+          "Unable to check inventory at this time"
+        );
+      });
     });
   });
 
   describe("updateOrderStatus", () => {
-    it("should update order status successfully", async () => {
-      const mockOrder = {
-        id: "order-123",
-        status: ORDER_STATUS.PENDING_SHIPMENT,
-      };
+    describe("Success Cases", () => {
+      it("should update order status successfully", async () => {
+        // Arrange
+        const currentOrder = {
+          id: "order-123",
+          status: ORDER_STATUS.PENDING_SHIPMENT,
+        };
 
-      const mockUpdatedOrder = {
-        ...mockOrder,
-        status: ORDER_STATUS.SHIPPED,
-        updatedAt: new Date(),
-      };
+        const updatedOrder = {
+          ...currentOrder,
+          status: ORDER_STATUS.SHIPPED,
+          updatedAt: new Date(),
+        };
 
-      mockDb.transaction.mockImplementation(async (callback) => {
-        const mockTx = {
-          query: {
-            processedEvents: {
-              findFirst: jest.fn().mockResolvedValue(null),
+        mockDb.transaction.mockImplementation(async (callback) => {
+          const mockTx = {
+            query: {
+              processedEvents: {
+                findFirst: jest.fn().mockResolvedValue(null), // Event not processed yet
+              },
+              orders: {
+                findFirst: jest.fn().mockResolvedValue(currentOrder),
+              },
             },
-            orders: {
-              findFirst: jest.fn().mockResolvedValue(mockOrder),
-            },
-          },
-          update: jest.fn().mockReturnValue({
-            set: jest.fn().mockReturnValue({
-              where: jest.fn().mockReturnValue({
-                returning: jest.fn().mockResolvedValue([mockUpdatedOrder]),
+            update: jest.fn().mockReturnValue({
+              set: jest.fn().mockReturnValue({
+                where: jest.fn().mockReturnValue({
+                  returning: jest.fn().mockResolvedValue([updatedOrder]),
+                }),
               }),
             }),
-          }),
-          insert: jest.fn().mockReturnValue({
-            values: jest.fn().mockResolvedValue(undefined),
-          }),
-        };
-        return callback(mockTx as any);
+            insert: jest.fn().mockReturnValue({
+              values: jest.fn().mockResolvedValue(undefined),
+            }),
+          };
+          return callback(mockTx as any);
+        });
+
+        // Act
+        const result = await orderService.updateOrderStatus(
+          "order-123",
+          ORDER_STATUS.SHIPPED,
+          "event-456",
+          "correlation-123"
+        );
+
+        // Assert
+        expect(result.success).toBe(true);
+        expect(result.order?.status).toBe(ORDER_STATUS.SHIPPED);
       });
-
-      const result = await orderService.updateOrderStatus(
-        "order-123",
-        ORDER_STATUS.SHIPPED,
-        "event-123"
-      );
-
-      expect(result.success).toBe(true);
-      expect(result.order?.status).toBe(ORDER_STATUS.SHIPPED);
     });
 
-    it("should reject invalid status transitions", async () => {
-      const mockOrder = {
-        id: "order-123",
-        status: ORDER_STATUS.DELIVERED, // Final state
-      };
+    describe("Validation", () => {
+      it("should fail when order not found", async () => {
+        // Arrange
+        mockDb.transaction.mockImplementation(async (callback) => {
+          const mockTx = {
+            query: {
+              processedEvents: {
+                findFirst: jest.fn().mockResolvedValue(null),
+              },
+              orders: {
+                findFirst: jest.fn().mockResolvedValue(null), // Order not found
+              },
+            },
+          };
+          return callback(mockTx as any);
+        });
 
-      mockDb.transaction.mockImplementation(async (callback) => {
-        const mockTx = {
-          query: {
-            processedEvents: {
-              findFirst: jest.fn().mockResolvedValue(null),
-            },
-            orders: {
-              findFirst: jest.fn().mockResolvedValue(mockOrder),
-            },
-          },
-        };
-        return callback(mockTx as any);
+        // Act
+        const result = await orderService.updateOrderStatus(
+          "non-existent-order",
+          ORDER_STATUS.SHIPPED,
+          "event-123"
+        );
+
+        // Assert
+        expect(result.success).toBe(false);
+        expect(result.error?.code).toBe(OrderErrorCode.ORDER_NOT_FOUND);
+        expect(result.error?.message).toBe(
+          "Order non-existent-order not found"
+        );
       });
 
-      const result = await orderService.updateOrderStatus(
-        "order-123",
-        ORDER_STATUS.SHIPPED, // Invalid: can't go back from delivered
-        "event-123"
-      );
-
-      expect(result.success).toBe(false);
-      expect(result.error?.code).toBe(OrderErrorCode.INVALID_STATUS_TRANSITION);
-    });
-
-    it("should skip duplicate events", async () => {
-      const existingEvent = { eventId: "event-123" };
-
-      mockDb.transaction.mockImplementation(async (callback) => {
-        const mockTx = {
-          query: {
-            processedEvents: {
-              findFirst: jest.fn().mockResolvedValue(existingEvent),
-            },
-          },
+      it("should reject invalid status transitions", async () => {
+        // Arrange
+        const deliveredOrder = {
+          id: "order-123",
+          status: ORDER_STATUS.DELIVERED, // Final state
         };
-        return callback(mockTx as any);
+
+        mockDb.transaction.mockImplementation(async (callback) => {
+          const mockTx = {
+            query: {
+              processedEvents: {
+                findFirst: jest.fn().mockResolvedValue(null),
+              },
+              orders: {
+                findFirst: jest.fn().mockResolvedValue(deliveredOrder),
+              },
+            },
+          };
+          return callback(mockTx as any);
+        });
+
+        // Act
+        const result = await orderService.updateOrderStatus(
+          "order-123",
+          ORDER_STATUS.SHIPPED, // Invalid: can't go back from delivered
+          "event-123"
+        );
+
+        // Assert
+        expect(result.success).toBe(false);
+        expect(result.error?.code).toBe(
+          OrderErrorCode.INVALID_STATUS_TRANSITION
+        );
+        expect(result.error?.message).toBe(
+          "Cannot transition from Delivered to Shipped"
+        );
       });
 
-      const result = await orderService.updateOrderStatus(
-        "order-123",
-        ORDER_STATUS.SHIPPED,
-        "event-123"
-      );
+      it("should skip processing if event already processed", async () => {
+        // Arrange
+        const existingEvent = {
+          eventId: "event-123",
+          eventType: "order.shipped",
+          processedAt: new Date(),
+        };
 
-      expect(result.success).toBe(false);
-      expect(result.error?.code).toBe(OrderErrorCode.DUPLICATE_EVENT);
+        mockDb.transaction.mockImplementation(async (callback) => {
+          const mockTx = {
+            query: {
+              processedEvents: {
+                findFirst: jest.fn().mockResolvedValue(existingEvent),
+              },
+            },
+          };
+          return callback(mockTx as any);
+        });
+
+        // Act
+        const result = await orderService.updateOrderStatus(
+          "order-123",
+          ORDER_STATUS.SHIPPED,
+          "event-123"
+        );
+
+        // Assert
+        expect(result.success).toBe(false);
+        expect(result.error?.code).toBe(OrderErrorCode.DUPLICATE_EVENT);
+        expect(result.error?.message).toBe("Event already processed");
+      });
     });
   });
 });

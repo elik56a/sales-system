@@ -1,7 +1,9 @@
 import { statusConsumer } from "../src/workers/statusConsumer";
 import { mockQueue } from "../src/messaging/mockQueue";
 import { orderService } from "../src/services/orderService";
-import { EVENT_TYPES } from "../src/config/events";
+import { EVENT_TYPES, TOPICS } from "../src/config/events";
+import { DeliveryStatusEvent } from "../src/types/messaging";
+import { generateEventId } from "../src/utils/idGenerator";
 
 // Mock the logger and order service
 jest.mock("../src/monitoring/logger", () => ({
@@ -37,8 +39,15 @@ describe("StatusConsumer", () => {
 
     statusConsumer.start();
 
-    // Simulate delivery event
-    mockQueue.simulateDeliveryEvent("order-123", EVENT_TYPES.ORDER_SHIPPED);
+    // Create and publish delivery event
+    const shippedEvent: DeliveryStatusEvent = {
+      eventId: generateEventId("test"),
+      eventType: EVENT_TYPES.ORDER_SHIPPED,
+      orderId: "order-123",
+      timestamp: new Date().toISOString(),
+    };
+
+    await mockQueue.publish(TOPICS.DELIVERY_EVENTS, shippedEvent);
 
     // Wait for async processing
     await new Promise((resolve) => setTimeout(resolve, 100));
@@ -59,8 +68,15 @@ describe("StatusConsumer", () => {
 
     statusConsumer.start();
 
-    // Simulate delivery event
-    mockQueue.simulateDeliveryEvent("order-456", EVENT_TYPES.ORDER_DELIVERED);
+    // Create and publish delivery event
+    const deliveredEvent: DeliveryStatusEvent = {
+      eventId: generateEventId("test"),
+      eventType: EVENT_TYPES.ORDER_DELIVERED,
+      orderId: "order-456",
+      timestamp: new Date().toISOString(),
+    };
+
+    await mockQueue.publish(TOPICS.DELIVERY_EVENTS, deliveredEvent);
 
     // Wait for async processing
     await new Promise((resolve) => setTimeout(resolve, 100));
