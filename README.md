@@ -29,6 +29,31 @@ pnpm run dev
 
 **⚠️ Important**: Always run `pnpm run db:start` before `pnpm run db:setup`. The database must be running for schema creation.
 
+## 🚀 Try the API
+
+Once the application is running, you can try it with these examples:
+
+### Create a Single Order
+
+```bash
+# Make a real API call to create an order
+pnpm run script:order
+```
+
+### Load Testing (5000 API Requests)
+
+```bash
+# Simulate peak ordering hours with 5000 concurrent API calls
+pnpm run script:peak-hours
+```
+
+**Expected Results**:
+
+- ✅ 100% success rate
+- ⚡ ~300-400 requests/second
+- 🚀 ~50ms average response time
+- 📊 Watch logs to see automatic order processing: `Pending Shipment` → `Shipped` → `Delivered`
+
 ## 🏗️ Architecture Overview
 
 **Modular Monolith with Event-Driven Components:**
@@ -45,6 +70,7 @@ pnpm run dev
 - ✅ Idempotency handling (client + message level)
 - ✅ Event-driven architecture with mock Kafka
 - ✅ Exponential backoff retry with Dead Letter Queue
+- ✅ SQL guards for forward-only status transitions
 
 ## 📋 Key Assumptions Made
 
@@ -137,13 +163,16 @@ GET /api/metrics
 
 **Order States**: `Pending Shipment` → `Shipped` → `Delivered`
 
-## 🧪 Load Testing
+## 🧪 App Testing
 
-Test system performance under high load:
+Test the application with automated test suite and performance validation:
 
 ```bash
-# Run 5000 concurrent requests
-pnpm run example:peak-hours
+# Run Jest test suite
+pnpm test
+
+# Run tests with coverage report
+pnpm run test:coverage
 ```
 
 **Expected Results**: 100% success rate, ~300-400 RPS, ~50ms avg response time
@@ -202,8 +231,8 @@ pnpm run dev:compose-down    # Stop Docker containers
 ```bash
 pnpm test                    # Run Jest test suite
 pnpm run test:coverage       # Run tests with coverage report
-pnpm run example:order       # Create a single test order
-pnpm run example:peak-hours  # Run 5000 request load test
+pnpm run script:order       # Create a single test order
+pnpm run script:peak-hours  # Run 5000 request load test
 ```
 
 ## 🐳 Development Options
@@ -306,7 +335,7 @@ src/
 ├── app.ts           # Express application setup
 └── server.ts        # Application entry point
 
-examples/            # Usage examples and load testing scripts
+scripts/             # API demonstration and load testing scripts
 tests/              # Test suite (unit and integration tests)
 ```
 

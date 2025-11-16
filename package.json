@@ -1,7 +1,7 @@
 {
   "name": "sales-system",
   "version": "1.0.0",
-  "description": "Sales System Implementation - Task 2",
+  "description": "Sales System",
   "main": "dist/server.js",
   "scripts": {
     "build": "tsc && tsc-alias",
@@ -18,8 +18,8 @@
     "db:generate": "drizzle-kit generate:pg",
     "db:seed": "node -r dotenv/config -r ts-node/register -r tsconfig-paths/register src/database/seed.ts",
     "db:setup": "pnpm run db:create && pnpm run db:generate && pnpm run db:seed",
-    "example:order": "./examples/create-order.sh",
-    "example:peak-hours": "./examples/peak-ordering-hours-test.sh",
+    "script:order": "./scripts/create-order.sh",
+    "script:peak-hours": "./scripts/peak-hours-orders.sh",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "jest",

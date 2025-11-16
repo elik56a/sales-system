@@ -1,6 +1,3 @@
-// Express Request interface augmentation
-// Centralizes all custom properties added to Express Request
-
 declare global {
   namespace Express {
     interface Request {
