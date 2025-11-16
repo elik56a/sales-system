@@ -288,6 +288,8 @@ pnpm run db:start
 
 **Key Benefits**: Battle-tested pattern (Uber, Stripe), horizontally scalable workers, zero lock contention, full transactional safety.
 
+> **Note**: The current implementation uses Drizzle ORM API. The `SELECT ... FOR UPDATE SKIP LOCKED` pattern above is for conceptual understanding only.
+
 ## 📁 Project Structure
 
 ```
