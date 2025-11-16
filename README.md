@@ -1,4 +1,7 @@
-# Sales System Implementation
+# Sales System Implementation - Task 2
+
+> **Enterprise-Grade Order Processing System**  
+> Implementing Transactional Outbox Pattern, Circuit Breaker, and Event-Driven Architecture
 
 ## 🚀 Quick Start
 
@@ -45,13 +48,16 @@ pnpm run script:order
 ```bash
 # Simulate peak ordering hours with 5000 concurrent API calls
 pnpm run script:peak-hours
+
+# For demo-friendly results, set INVENTORY_FAILURE_RATE=0.01 in your .env file
 ```
 
 **Expected Results**:
 
-- ✅ 100% success rate
+- ✅ Success rate depends on `INVENTORY_FAILURE_RATE` setting (99%+ with default 1% failure rate)
 - ⚡ ~300-400 requests/second
 - 🚀 ~50ms average response time
+- 🔄 Circuit breaker demonstration with automatic recovery
 - 📊 Watch logs to see automatic order processing: `Pending Shipment` → `Shipped` → `Delivered`
 
 ## 🏗️ Architecture Overview
@@ -65,12 +71,12 @@ pnpm run script:peak-hours
 
 **Key Patterns Implemented:**
 
-- ✅ Transactional Outbox Pattern with concurrent workers
-- ✅ Circuit Breaker for external service calls
-- ✅ Idempotency handling (client + message level)
-- ✅ Event-driven architecture with mock Kafka
-- ✅ Exponential backoff retry with Dead Letter Queue
-- ✅ SQL guards for forward-only status transitions
+- ✅ **Transactional Outbox Pattern** with concurrent workers
+- ✅ **Circuit Breaker** for external service resilience (5 failures → 30s recovery, configurable via `INVENTORY_FAILURE_RATE`)
+- ✅ **Idempotency** handling (client + message level)
+- ✅ **Event-driven architecture** with mock Kafka
+- ✅ **Exponential backoff retry** with Dead Letter Queue
+- ✅ **SQL guards** for forward-only status transitions (Pending → Shipped → Delivered only)
 
 ## 📋 Key Assumptions Made
 
@@ -175,7 +181,7 @@ pnpm test
 pnpm run test:coverage
 ```
 
-**Expected Results**: 100% success rate, ~300-400 RPS, ~50ms avg response time
+**Expected Results**: 100% test pass rate, comprehensive coverage of core business logic
 
 ## 🔧 Configuration
 
@@ -191,8 +197,13 @@ DB_POOL_MIN_SIZE=10
 PORT=3000
 JWT_SECRET=your-secret-key
 
-# Outbox Publisher
-OUTBOX_POLL_INTERVAL=1000
+# Circuit Breaker
+CIRCUIT_BREAKER_TIMEOUT=5000
+CIRCUIT_BREAKER_FAILURE_THRESHOLD=5
+CIRCUIT_BREAKER_RESET_TIMEOUT=30000
+
+# Inventory Service Simulation
+INVENTORY_FAILURE_RATE=1  # Percentage of requests that fail (0-100)
 ```
 
 ## 📋 Available Scripts

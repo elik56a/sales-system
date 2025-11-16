@@ -18,12 +18,12 @@ export const config = {
     serviceUrl: process.env.INVENTORY_SERVICE_URL || "http://localhost:3001",
   },
   circuitBreaker: {
-    timeout: parseInt(process.env.CIRCUIT_BREAKER_TIMEOUT || "5000"),
+    timeout: parseInt(process.env.CIRCUIT_BREAKER_TIMEOUT || "5000"), // 5 seconds
     failureThreshold: parseInt(
-      process.env.CIRCUIT_BREAKER_FAILURE_THRESHOLD || "5"
+      process.env.CIRCUIT_BREAKER_FAILURE_THRESHOLD || "5" // 5 failures before opening
     ),
     resetTimeout: parseInt(
-      process.env.CIRCUIT_BREAKER_RESET_TIMEOUT || "30000"
+      process.env.CIRCUIT_BREAKER_RESET_TIMEOUT || "30000" // 30 seconds recovery time
     ),
   },
   retry: {
