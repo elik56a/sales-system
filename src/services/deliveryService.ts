@@ -66,8 +66,8 @@ class DeliveryService {
 
       contextLogger.info("Processing order for delivery", { orderId });
 
-      const shippingDelay = 30000; //30 seconds
-      const deliveryDelay = shippingDelay + 30000; //60 seconds
+      const shippingDelay = 10000; //10 seconds
+      const deliveryDelay = shippingDelay + 10000; //20 seconds
 
       // Schedule shipping status
       setTimeout(() => {

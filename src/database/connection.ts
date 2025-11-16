@@ -1,11 +1,12 @@
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
+import { config } from "@/config/env";
 import * as schema from "./schema";
 
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  max: parseInt(process.env.DB_POOL_SIZE || "100"),
-  min: parseInt(process.env.DB_POOL_MIN || "10"),
+  connectionString: config.database.url,
+  max: config.database.poolSize,
+  min: config.database.poolMinSize,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 10000,
 });

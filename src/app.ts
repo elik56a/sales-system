@@ -24,7 +24,7 @@ export const createApp = (): Express => {
 
   // Custom middleware
   app.use(correlationIdMiddleware);
-  app.use(queueMiddleware); // Add request queuing before rate limiting
+  // app.use(queueMiddleware);
   app.use(rateLimiter);
 
   // Health checks (no auth required)

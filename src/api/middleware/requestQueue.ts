@@ -16,8 +16,8 @@ class RequestQueue {
   private readonly timeoutMs: number;
 
   constructor(
-    maxConcurrent = 50, // Process max 50 requests concurrently
-    maxQueueSize = 1000, // Queue up to 1000 requests
+    maxConcurrent = 200, // Process max 200 requests concurrently (4x increase)
+    maxQueueSize = 2000, // Queue up to 2000 requests (2x increase)
     timeoutMs = 30000 // 30 second timeout
   ) {
     this.maxConcurrent = maxConcurrent;
@@ -78,6 +78,8 @@ class RequestQueue {
       processing: this.processing,
       path: req.path,
       correlationId: req.correlationId,
+      queueUtilization: Math.round((this.queue.length / this.maxQueueSize) * 100),
+      processingUtilization: Math.round((this.processing / this.maxConcurrent) * 100),
     });
 
     // Set timeout for queued request

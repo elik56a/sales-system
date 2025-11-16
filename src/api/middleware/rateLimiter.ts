@@ -2,7 +2,7 @@ import rateLimit from "express-rate-limit";
 
 export const rateLimiter = rateLimit({
   windowMs: 60 * 1000, // 1 minute
-  max: 500, // Increase to 500 requests per minute per IP for load testing
+  max: 5000, // High throughput for load testing (83 req/sec)
   message: {
     error: "Too Many Requests",
     message: "Rate limit exceeded. Try again later.",

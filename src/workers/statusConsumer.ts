@@ -5,9 +5,7 @@ import { EVENT_TYPES, TOPICS } from "@/config/events";
 import { OrderStatus, ORDER_STATUS } from "@/types";
 import { QueueEvent, DeliveryStatusEvent } from "@/types/messaging";
 import { generateCorrelationId } from "@/utils/idGenerator";
-import dotenv from "dotenv";
 
-dotenv.config();
 class StatusConsumer {
   private isRunning = false;
 

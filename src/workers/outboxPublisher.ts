@@ -6,9 +6,6 @@ import { EVENT_TYPES, TOPICS } from "@/config/events";
 import { QueueEvent, DLQEvent } from "@/types/messaging";
 import { generateEventId } from "@/utils/idGenerator";
 import { eq, and, or, lte, isNull } from "drizzle-orm";
-import dotenv from "dotenv";
-
-dotenv.config();
 
 interface OutboxEventRow {
   id: string;
@@ -84,7 +81,7 @@ class OutboxPublisher {
         .where(
           and(
             eq(outboxEvents.published, false),
-            lte(outboxEvents.retryCount, this.maxRetries),
+            lte(outboxEvents.retryCount, this.maxRetries), // retry_count <= this.maxRetries,
             or(
               isNull(outboxEvents.nextRetryAt),
               lte(outboxEvents.nextRetryAt, new Date())

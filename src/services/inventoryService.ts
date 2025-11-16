@@ -102,11 +102,6 @@ class InventoryService {
       };
     }
 
-    // Simulate service errors (1% chance)
-    if (Math.random() < 0.01) {
-      throw new Error("Inventory service internal error");
-    }
-
     // Default: product is available
     return {
       available: true,
@@ -123,10 +118,10 @@ class InventoryService {
       setTimeout(resolve, Math.random() * 150 + 100)
     );
 
-    // Simulate batch processing (1% chance of service error)
-    if (Math.random() < 0.01) {
-      throw new Error("Inventory service internal error");
-    }
+    // Simulate batch processing error (1% chance)
+    // if (Math.random() < 0.01) {
+    //   throw new Error("Inventory service internal error");
+    // }
 
     return requests.map((request) => {
       const { productId, quantity } = request;
@@ -140,14 +135,14 @@ class InventoryService {
         };
       }
 
-      if (productId.includes("limited")) {
+      /*  if (productId.includes("limited")) {
         const availableQuantity = Math.floor(Math.random() * 5) + 1;
         return {
           available: quantity <= availableQuantity,
           productId,
           availableQuantity,
         };
-      }
+      }*/
 
       return {
         available: true,
