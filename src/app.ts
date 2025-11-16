@@ -1,4 +1,5 @@
 import express, { Express } from "express";
+import "@/types/express";
 import { correlationIdMiddleware } from "@/api/middleware/correlationId";
 import { rateLimiter } from "@/api/middleware/rateLimiter";
 import { queueMiddleware } from "@/api/middleware/requestQueue";
@@ -6,10 +7,10 @@ import { errorHandler, notFoundHandler } from "@/api/middleware/errorHandler";
 import { healthCheck } from "@/monitoring/healthCheck";
 import { apiRoutes } from "@/api/routes";
 import { logger } from "@/monitoring/logger";
-import { authenticateToken } from "./api/middleware/auth";
-import { outboxPublisher } from "./workers/outboxPublisher";
-import { statusConsumer } from "./workers/statusConsumer";
-import { deliveryService } from "./services/deliveryService";
+import { authenticateToken } from "@/api/middleware/auth";
+import { outboxPublisher } from "@/workers/outboxPublisher";
+import { statusConsumer } from "@/workers/statusConsumer";
+import { deliveryService } from "@/services/deliveryService";
 import type http from "http";
 
 export const createApp = (): Express => {
@@ -24,7 +25,7 @@ export const createApp = (): Express => {
 
   // Custom middleware
   app.use(correlationIdMiddleware);
-  // app.use(queueMiddleware);
+  app.use(queueMiddleware);
   app.use(rateLimiter);
 
   // Health checks (no auth required)
