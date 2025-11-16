@@ -1,4 +1,8 @@
-import { createApp, setupGracefulShutdown, startBackgroundWorkers } from "./app";
+import {
+  createApp,
+  setupGracefulShutdown,
+  startBackgroundWorkers,
+} from "./app";
 import { config } from "@/config/env";
 import { logger } from "@/monitoring/logger";
 import { checkDatabaseConnection } from "@/monitoring/healthCheck";
@@ -14,7 +18,7 @@ const startServer = async () => {
         environment: process.env.NODE_ENV || "development",
         port: config.port,
       });
-      
+
       // Start background workers after server is ready
       startBackgroundWorkers();
     });

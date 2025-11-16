@@ -1,24 +1,24 @@
-import { Client } from 'pg';
-import { logger } from '@/monitoring/logger';
-import { config } from '@/config/env';
+import { Client } from "pg";
+import { logger } from "@/monitoring/logger";
+import { config } from "@/config/env";
 
 const createDatabase = async (): Promise<void> => {
   const url = new URL(config.database.url);
   const dbName = url.pathname.slice(1); // Remove leading slash
-  
+
   const client = new Client({
     host: url.hostname,
     port: parseInt(url.port) || 5432,
     user: url.username,
     password: url.password,
-    database: 'postgres', // Connect to default database first
+    database: "postgres", // Connect to default database first
   });
 
   try {
     await client.connect();
-    
+
     const { rows } = await client.query(
-      'SELECT 1 FROM pg_database WHERE datname = $1',
+      "SELECT 1 FROM pg_database WHERE datname = $1",
       [dbName]
     );
 
@@ -35,7 +35,7 @@ const createDatabase = async (): Promise<void> => {
 
 if (require.main === module) {
   createDatabase().catch((error) => {
-    logger.error('❌ Failed to create database', { error });
+    logger.error("❌ Failed to create database", { error });
     process.exit(1);
   });
 }

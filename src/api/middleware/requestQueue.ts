@@ -78,8 +78,12 @@ class RequestQueue {
       processing: this.processing,
       path: req.path,
       correlationId: req.correlationId,
-      queueUtilization: Math.round((this.queue.length / this.maxQueueSize) * 100),
-      processingUtilization: Math.round((this.processing / this.maxConcurrent) * 100),
+      queueUtilization: Math.round(
+        (this.queue.length / this.maxQueueSize) * 100
+      ),
+      processingUtilization: Math.round(
+        (this.processing / this.maxConcurrent) * 100
+      ),
     });
 
     // Set timeout for queued request

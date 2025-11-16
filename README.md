@@ -248,12 +248,12 @@ This implementation uses the **industry-standard polling pattern** with concurre
 
 ```sql
 -- Conceptual SQL: concurrent workers with zero contention
-SELECT * FROM outbox_events 
-WHERE published = false 
+SELECT * FROM outbox_events
+WHERE published = false
   AND retry_count <= 5
   AND (next_retry_at IS NULL OR next_retry_at <= NOW())
-ORDER BY created_at 
-LIMIT 50 
+ORDER BY created_at
+LIMIT 50
 FOR UPDATE SKIP LOCKED;
 ```
 

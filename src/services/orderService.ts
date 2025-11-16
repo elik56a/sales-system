@@ -38,9 +38,8 @@ export class OrderService {
 
       // 1. Check idempotency
       if (idempotencyKey) {
-        const existingOrder = await this.findOrderByIdempotencyKey(
-          idempotencyKey
-        );
+        const existingOrder =
+          await this.findOrderByIdempotencyKey(idempotencyKey);
         if (existingOrder) {
           contextLogger.info("Returning existing order (idempotent)", {
             orderId: existingOrder.id,
@@ -117,9 +116,8 @@ export class OrderService {
       }));
 
       // Single batch call instead of multiple individual calls
-      const inventoryResults = await inventoryService.checkBatchAvailability(
-        inventoryRequests
-      );
+      const inventoryResults =
+        await inventoryService.checkBatchAvailability(inventoryRequests);
 
       // Check results and collect unavailable items
       const unavailableItems: UnavailableItem[] = [];

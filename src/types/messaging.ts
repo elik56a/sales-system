@@ -1,4 +1,4 @@
-import { EVENT_TYPES } from '@/config/events';
+import { EVENT_TYPES } from "@/config/events";
 
 export interface BaseEvent {
   eventId: string;
@@ -21,7 +21,9 @@ export interface OrderCreatedEvent extends BaseEvent {
 }
 
 export interface DeliveryStatusEvent extends BaseEvent {
-  eventType: typeof EVENT_TYPES.ORDER_SHIPPED | typeof EVENT_TYPES.ORDER_DELIVERED;
+  eventType:
+    | typeof EVENT_TYPES.ORDER_SHIPPED
+    | typeof EVENT_TYPES.ORDER_DELIVERED;
   orderId: string;
 }
 
