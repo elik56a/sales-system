@@ -280,55 +280,13 @@ docker stop postgres && docker rm postgres
 pnpm run db:start
 ```
 
-## 🔄 Outbox Pattern: Production-Grade Polling
+## 🔄 Outbox Pattern Implementation
 
-**Why Polling with SKIP LOCKED?**
+**Goal**: Guarantee event delivery without distributed transactions using database polling with `SELECT ... FOR UPDATE SKIP LOCKED`.
 
-This implementation uses the **industry-standard polling pattern** with concurrent workers - the same approach used by Uber, Stripe, and Airbnb for high-throughput event processing.
+**How it Works**: Events are stored in the same transaction as business data, then published by background workers with exponential backoff retry.
 
-```sql
--- Conceptual SQL: concurrent workers with zero contention
-SELECT * FROM outbox_events
-WHERE published = false
-  AND retry_count <= 5
-  AND (next_retry_at IS NULL OR next_retry_at <= NOW())
-ORDER BY created_at
-LIMIT 50
-FOR UPDATE SKIP LOCKED;
-```
-
-**Implementation Note:** The actual code uses Drizzle ORM for type safety and codebase consistency, with additional retry logic and exponential backoff scheduling.
-
-**Key Benefits:**
-
-- ✅ **Battle-tested**: Handles millions of events/day in production systems
-- ✅ **Horizontally scalable**: Multiple workers with zero lock contention
-- ✅ **Database-native**: Leverages PostgreSQL's advanced row-level locking
-- ✅ **Simple & reliable**: Easy to test, debug, monitor, and maintain
-- ✅ **Efficient**: Index-only scans with minimal polling overhead
-
-**Performance Characteristics:**
-
-- **Throughput**: 10,000+ events/second with proper indexing
-- **Latency**: 1-2 seconds (configurable polling interval)
-- **Scalability**: Linear scaling with worker count
-- **Reliability**: Full transactional safety guaranteed
-
-**Why Not Database Triggers?**
-Triggers introduce architectural problems:
-
-- Run inside DB transactions (can't reliably publish to Kafka)
-- Couple business logic to database engine
-- Harder to test, debug, and version control
-- Violate microservices separation of concerns
-
-**Real-World Bottlenecks:**
-In production systems, performance limits come from:
-
-- Inventory service API calls
-- Database disk I/O
-- Kafka broker throughput
-- **Not the polling overhead** (microseconds per query)
+**Key Benefits**: Battle-tested pattern (Uber, Stripe), horizontally scalable workers, zero lock contention, full transactional safety.
 
 ## 📁 Project Structure
 
