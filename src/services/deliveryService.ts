@@ -42,8 +42,6 @@ class DeliveryService {
       eventId: event.eventId,
     });
 
-    console.log("handleOrderCreated event", event);
-
     try {
       if (event.eventType !== EVENT_TYPES.ORDER_CREATED) {
         return; // Ignore non-order-created events
