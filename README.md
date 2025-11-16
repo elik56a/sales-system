@@ -1,8 +1,5 @@
 # Sales System Implementation - Task 2
 
-> **Enterprise-Grade Order Processing System**  
-> Implementing Transactional Outbox Pattern, Circuit Breaker, and Event-Driven Architecture
-
 ## 🚀 Quick Start
 
 ### Prerequisites
