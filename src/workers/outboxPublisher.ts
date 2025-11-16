@@ -6,6 +6,7 @@ import { EVENT_TYPES, TOPICS } from "@/config/events";
 import { QueueEvent, DLQEvent } from "@/types/messaging";
 import { generateEventId } from "@/utils/idGenerator";
 import { eq, and, or, lte, isNull } from "drizzle-orm";
+import { config } from "@/config/env";
 
 interface OutboxEventRow {
   id: string;
@@ -19,9 +20,7 @@ interface OutboxEventRow {
 class OutboxPublisher {
   private isRunning = false;
   private intervalId?: NodeJS.Timeout;
-  private readonly pollIntervalMs = parseInt(
-    process.env.OUTBOX_POLL_INTERVAL || "1000"
-  );
+  private readonly pollIntervalMs = config.outboxWorker.pollInterval;
   private readonly batchSize = 50;
   private readonly maxRetries = 5;
   private readonly baseDelayMs = 100;
@@ -265,5 +264,5 @@ if (require.main === module) {
   });
 
   // Keep the process alive
-  setInterval(() => {}, 1000);
+  setInterval(() => {}, config.outboxWorker.pollInterval);
 }

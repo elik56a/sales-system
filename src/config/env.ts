@@ -14,9 +14,6 @@ export const config = {
   jwt: {
     secret: process.env.JWT_SECRET || "your-secret-key-here",
   },
-  inventory: {
-    serviceUrl: process.env.INVENTORY_SERVICE_URL || "http://localhost:3001",
-  },
   circuitBreaker: {
     timeout: parseInt(process.env.CIRCUIT_BREAKER_TIMEOUT || "5000"), // 5 seconds
     failureThreshold: parseInt(
@@ -39,5 +36,8 @@ export const config = {
   },
   mockQueue: {
     enabled: process.env.MOCK_QUEUE_ENABLED === "true",
+  },
+  outboxWorker: {
+    pollInterval: parseInt(process.env.OUTBOX_POLL_INTERVAL || "1000"),
   },
 };
