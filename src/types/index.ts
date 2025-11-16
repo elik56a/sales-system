@@ -4,3 +4,4 @@ export * from "./inventory";
 export * from "./circuitBreaker";
 export * from "./messaging";
 export * from "./express";
+export * from "./database";

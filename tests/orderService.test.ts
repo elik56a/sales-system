@@ -59,10 +59,9 @@ describe("OrderService", () => {
     describe("Success Cases", () => {
       it("should create order successfully when all items are available", async () => {
         // Arrange
-        mockInventoryService.checkBatchAvailability.mockResolvedValue([
-          { available: true, productId: "product-1", availableQuantity: 10 },
-          { available: true, productId: "product-2", availableQuantity: 5 },
-        ]);
+        mockInventoryService.validateOrderInventory.mockResolvedValue({
+          success: true,
+        });
 
         mockDb.transaction.mockImplementation(async (callback) => {
           const mockTx = {
@@ -89,11 +88,11 @@ describe("OrderService", () => {
 
         // Verify inventory was checked
         expect(
-          mockInventoryService.checkBatchAvailability
-        ).toHaveBeenCalledWith([
-          { productId: "product-1", quantity: 2 },
-          { productId: "product-2", quantity: 1 },
-        ]);
+          mockInventoryService.validateOrderInventory
+        ).toHaveBeenCalledWith(
+          validOrderRequest.items,
+          expect.any(Object) // contextLogger
+        );
 
         // Verify transaction was called
         expect(mockDb.transaction).toHaveBeenCalled();
@@ -128,7 +127,7 @@ describe("OrderService", () => {
 
         // Should not check inventory or create new order
         expect(
-          mockInventoryService.checkBatchAvailability
+          mockInventoryService.validateOrderInventory
         ).not.toHaveBeenCalled();
         expect(mockDb.transaction).not.toHaveBeenCalled();
       });
@@ -137,10 +136,16 @@ describe("OrderService", () => {
     describe("Inventory Validation", () => {
       it("should fail when some items are not available", async () => {
         // Arrange
-        mockInventoryService.checkBatchAvailability.mockResolvedValue([
-          { available: false, productId: "product-1", availableQuantity: 1 }, // Not enough
-          { available: true, productId: "product-2", availableQuantity: 5 }, // Available
-        ]);
+        mockInventoryService.validateOrderInventory.mockResolvedValue({
+          success: false,
+          error: {
+            code: OrderErrorCode.INSUFFICIENT_INVENTORY,
+            message: "Some items are not available in requested quantities",
+            details: [
+              { productId: "product-1", requested: 2, available: 1 }
+            ]
+          }
+        });
 
         // Act
         const result = await orderService.createOrder(validOrderRequest);
@@ -164,9 +169,13 @@ describe("OrderService", () => {
 
       it("should handle inventory service errors gracefully", async () => {
         // Arrange
-        mockInventoryService.checkBatchAvailability.mockRejectedValue(
-          new Error("Inventory service timeout")
-        );
+        mockInventoryService.validateOrderInventory.mockResolvedValue({
+          success: false,
+          error: {
+            code: OrderErrorCode.INVENTORY_SERVICE_UNAVAILABLE,
+            message: "Unable to check inventory at this time"
+          }
+        });
 
         // Act
         const result = await orderService.createOrder(validOrderRequest);

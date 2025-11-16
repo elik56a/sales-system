@@ -1,25 +1,25 @@
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { sql } from "drizzle-orm";
 import { db } from "./connection";
+import { logger } from "@/monitoring/logger";
 
 const createExtensions = async () => {
   await db.execute(sql`CREATE EXTENSION IF NOT EXISTS "uuid-ossp"`);
-  console.log("Extensions created");
 };
 
 const seedDatabase = async () => {
   try {
-    console.log("Seeding database with Drizzle...");
+    logger.info("Seeding database...");
 
     await createExtensions();
 
     // This will create the tables in the database
     await migrate(db, { migrationsFolder: "./drizzle" });
 
-    console.log("🎉 Database seeded successfully with Drizzle");
+    logger.info("Database seeded successfully ");
     process.exit(0);
   } catch (error) {
-    console.error("Database seeding failed:", error);
+    logger.error("Database seeding failed:", error);
     process.exit(1);
   }
 };

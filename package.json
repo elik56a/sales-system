@@ -12,7 +12,7 @@
     "dev:api": "ts-node-dev --respawn --transpile-only -r tsconfig-paths/register src/server.ts",
     "dev:outbox": "ts-node-dev --respawn --transpile-only -r tsconfig-paths/register src/workers/outboxPublisher.ts",
     "dev:consumer": "ts-node-dev --respawn --transpile-only -r tsconfig-paths/register src/workers/statusConsumer.ts",
-    "db:start": "docker run --name postgres -e POSTGRES_PASSWORD=password -p 5432:5432 -d postgres:14 || docker start postgres",
+    "db:start": "docker run --name postgres -e POSTGRES_PASSWORD=password -p 5432:5432 -d postgres:14-alpine || docker start postgres",
     "db:stop": "docker stop postgres",
     "db:create": "node -r dotenv/config -r ts-node/register -r tsconfig-paths/register src/database/createDb.ts",
     "db:generate": "drizzle-kit generate:pg",

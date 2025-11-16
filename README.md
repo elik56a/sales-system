@@ -20,13 +20,16 @@ pnpm install
 # 2. Setup environment
 cp .env.example .env
 
-# 3. Start PostgreSQL in Docker
+# 3. DockerHub Login
+docker login
+
+# 4. Start PostgreSQL in Docker
 pnpm run db:start
 
-# 4. Setup database schema and seed data
+# 5. Setup database schema and seed data
 pnpm run db:setup
 
-# 5. Start the application
+# 6. Start the application
 pnpm run dev
 ```
 

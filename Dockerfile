@@ -20,9 +20,6 @@ RUN pnpm build
 # Generate schema during build (when dev dependencies are available)
 RUN pnpm run db:generate
 
-# Remove dev dependencies after build and schema generation
-RUN pnpm prune --prod
-
 # Expose port
 EXPOSE 3000
 
@@ -30,5 +27,5 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
   CMD curl -f http://localhost:3000/health || exit 1
 
-# Seed data and start (use compiled JS since ts-node was removed)
-CMD ["sh", "-c", "node dist/database/seed.js && pnpm start"]
+# Start application (database setup will be handled separately)
+CMD ["pnpm", "start"]

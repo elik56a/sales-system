@@ -10,84 +10,104 @@ export const createOrder = async (req: Request, res: Response) => {
   const contextLogger = createContextLogger(correlationId);
 
   try {
-    // Get idempotency key from header
-    const idempotencyKey = req.headers["idempotency-key"] as string;
+    const { validatedData, idempotencyKey, userId } = await parseRequest(req);
 
-    // Get user info (may be undefined for test endpoints)
-    const userId = req.user?.id || "anonymous";
+    logOrderCreation(contextLogger, { userId, validatedData, idempotencyKey });
 
-    // Validate request body
-    const validatedData = createOrderSchema.parse(req.body);
-
-    contextLogger.info("Creating order", {
-      userId,
-      customerId: validatedData.customerId,
-      itemCount: validatedData.items.length,
-      idempotencyKey: idempotencyKey ? "provided" : "none",
-    });
-
-    // Call order service
     const result = await orderService.createOrder(
       validatedData,
       idempotencyKey,
       correlationId
     );
 
-    if (result.success) {
-      contextLogger.info("Order created successfully", {
-        orderId: result.order?.orderId,
-      });
+    return handleOrderResult(result, contextLogger, correlationId, res);
+  } catch (error) {
+    return handleError(error, contextLogger, correlationId, res);
+  }
+};
 
-      return res.status(201).json({
-        success: true,
-        data: result.order,
-        correlationId,
-      });
-    }
+// Helper functions
+const parseRequest = async (req: Request) => {
+  const idempotencyKey = req.headers["idempotency-key"] as string;
+  const userId = req.user?.id || "anonymous";
+  const validatedData = createOrderSchema.parse(req.body);
 
-    // Handle business errors with appropriate HTTP status codes
-    const statusCode = getStatusCodeForError(result.error!.code);
+  return { validatedData, idempotencyKey, userId };
+};
 
-    contextLogger.warn("Order creation failed", {
-      errorCode: result.error!.code,
-      statusCode,
+const logOrderCreation = (
+  contextLogger: any,
+  { userId, validatedData, idempotencyKey }: any
+) => {
+  contextLogger.info("Creating order", {
+    userId,
+    customerId: validatedData.customerId,
+    itemCount: validatedData.items.length,
+    idempotencyKey: idempotencyKey ? "provided" : "none",
+  });
+};
+
+const handleOrderResult = (
+  result: any,
+  contextLogger: any,
+  correlationId: string,
+  res: Response
+) => {
+  if (result.success) {
+    contextLogger.info("Order created successfully", {
+      orderId: result.order?.orderId,
     });
-
-    return res.status(statusCode).json({
-      success: false,
-      error: result.error,
+    return res.status(201).json({
+      success: true,
+      data: result.order,
       correlationId,
     });
-  } catch (error) {
-    if (error instanceof ZodError) {
-      contextLogger.warn("Validation error", {
-        errors: error.errors,
-      });
+  }
 
-      return res.status(400).json({
-        success: false,
-        error: {
-          code: OrderErrorCode.VALIDATION_ERROR,
-          message: "Invalid request data",
-          details: error.errors,
-        },
-        correlationId,
-      });
-    }
+  const statusCode = getStatusCodeForError(result.error!.code);
+  contextLogger.warn("Order creation failed", {
+    errorCode: result.error!.code,
+    statusCode,
+  });
 
-    contextLogger.error("Unexpected error in order creation", {
-      error: error instanceof Error ? error.message : error,
-    });
+  return res.status(statusCode).json({
+    success: false,
+    error: result.error,
+    correlationId,
+  });
+};
 
-    return res.status(500).json({
+const handleError = (
+  error: unknown,
+  contextLogger: any,
+  correlationId: string,
+  res: Response
+) => {
+  if (error instanceof ZodError) {
+    contextLogger.warn("Validation error", { errors: error.errors });
+    return res.status(400).json({
       success: false,
       error: {
-        code: OrderErrorCode.INVENTORY_SERVICE_UNAVAILABLE,
-        message: "Internal server error",
+        code: OrderErrorCode.VALIDATION_ERROR,
+        message: "Invalid request data",
+        details: error.errors,
       },
       correlationId,
     });
   }
+
+  contextLogger.error("Unexpected error in order creation", {
+    error: error instanceof Error ? error.message : error,
+  });
+
+  return res.status(500).json({
+    success: false,
+    error: {
+      code: OrderErrorCode.INVENTORY_SERVICE_UNAVAILABLE,
+      message: "Internal server error",
+    },
+    correlationId,
+  });
 };
 
 const getStatusCodeForError = (errorCode: OrderErrorCode): number => {

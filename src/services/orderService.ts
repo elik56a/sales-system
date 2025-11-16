@@ -1,26 +1,26 @@
 import { db } from "@/database/connection";
-import { orders, outboxEvents, processedEvents } from "@/database/schema";
-import { inventoryService } from "./inventoryService";
+import {
+  orders,
+  outboxEvents,
+  processedEvents,
+  type Order,
+} from "@/database/schema";
+import { inventoryService } from "@/services/inventoryService";
 import {
   OrderStatus,
   OrderCreationResult,
   OrderUpdateResult,
   OrderErrorCode,
-  UnavailableItem,
   OrderItem,
   CreateOrderResponse,
   ORDER_STATUS,
+  DatabaseTransaction,
+  CreateOrderRequest,
 } from "@/types";
 import { EVENT_TYPES } from "@/config/events";
-import { logger } from "@/monitoring/logger";
+import { logger, type ContextLogger } from "@/monitoring/logger";
 import { eq } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
-
-// Define the request type locally (already validated by controller)
-interface CreateOrderRequest {
-  customerId: string;
-  items: OrderItem[];
-}
 
 export class OrderService {
   async createOrder(
@@ -28,45 +28,24 @@ export class OrderService {
     idempotencyKey?: string,
     correlationId?: string
   ): Promise<OrderCreationResult> {
-    const contextLogger = logger.child({
-      correlationId,
-      customerId: request.customerId,
-    });
+    const contextLogger = this.createLogger(correlationId, request.customerId);
 
     try {
       contextLogger.info("Creating order", { itemCount: request.items.length });
 
-      // 1. Check idempotency
-      if (idempotencyKey) {
-        const existingOrder =
-          await this.findOrderByIdempotencyKey(idempotencyKey);
-        if (existingOrder) {
-          contextLogger.info("Returning existing order (idempotent)", {
-            orderId: existingOrder.id,
-          });
-          return {
-            success: true,
-            order: this.mapOrderToResponse(existingOrder),
-          };
-        }
-      }
+      const idempotencyResult = await this.handleIdempotency(
+        idempotencyKey,
+        contextLogger
+      );
+      if (idempotencyResult) return idempotencyResult;
 
-      // 2. Check inventory for all items
-      const inventoryResult = await this.checkAllItemsAvailability(
+      const inventoryResult = await this.validateInventory(
         request.items,
         contextLogger
       );
-      if (!inventoryResult.success) {
-        return inventoryResult;
-      }
+      if (!inventoryResult.success) return inventoryResult;
 
-      // 3. Calculate total amount
-      const totalAmount = request.items.reduce(
-        (sum, item) => sum + item.price * item.quantity,
-        0
-      );
-
-      // 4. Create order with outbox event (atomic transaction)
+      const totalAmount = this.calculateTotal(request.items);
       const order = await this.createOrderWithOutbox(
         request,
         totalAmount,
@@ -79,90 +58,68 @@ export class OrderService {
         totalAmount: order.totalAmount,
       });
 
-      return {
-        success: true,
-        order: this.mapOrderToResponse(order),
-      };
+      return this.createSuccessResult(order);
     } catch (error) {
-      contextLogger.error("Order creation failed", {
-        error: error instanceof Error ? error.message : error,
-      });
-
-      // System errors (circuit breaker, database, etc.)
-      return {
-        success: false,
-        error: {
-          code: OrderErrorCode.INVENTORY_SERVICE_UNAVAILABLE,
-          message:
-            "Unable to process order at this time. Please try again later.",
-        },
-      };
+      return this.handleOrderCreationError(error, contextLogger);
     }
   }
 
-  private async checkAllItemsAvailability(
+  // Helper methods for createOrder
+  private createLogger = (correlationId?: string, customerId?: string) => {
+    return logger.child({ correlationId, customerId });
+  };
+
+  private handleIdempotency = async (
+    idempotencyKey: string | undefined,
+    contextLogger: ContextLogger
+  ) => {
+    if (!idempotencyKey) return null;
+
+    const existingOrder = await this.findOrderByIdempotencyKey(idempotencyKey);
+    if (existingOrder) {
+      contextLogger.info("Returning existing order (idempotent)", {
+        orderId: existingOrder.id,
+      });
+      return this.createSuccessResult(existingOrder);
+    }
+    return null;
+  };
+
+  private validateInventory = async (
     items: OrderItem[],
-    contextLogger: any
-  ): Promise<OrderCreationResult> {
-    contextLogger.info("Checking inventory for all items", {
-      itemCount: items.length,
+    contextLogger: ContextLogger
+  ): Promise<OrderCreationResult> => {
+    return await inventoryService.validateOrderInventory(items, contextLogger);
+  };
+
+  private calculateTotal = (items: OrderItem[]): number => {
+    return items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  };
+
+  private createSuccessResult = (order: Order): OrderCreationResult => {
+    return {
+      success: true,
+      order: this.mapOrderToResponse(order),
+    };
+  };
+
+  private handleOrderCreationError = (
+    error: unknown,
+    contextLogger: ContextLogger
+  ): OrderCreationResult => {
+    contextLogger.error("Order creation failed", {
+      error: error instanceof Error ? error.message : error,
     });
 
-    try {
-      // Prepare batch request
-      const inventoryRequests = items.map((item) => ({
-        productId: item.productId,
-        quantity: item.quantity,
-      }));
-
-      // Single batch call instead of multiple individual calls
-      const inventoryResults =
-        await inventoryService.checkBatchAvailability(inventoryRequests);
-
-      // Check results and collect unavailable items
-      const unavailableItems: UnavailableItem[] = [];
-
-      inventoryResults.forEach((result, index) => {
-        if (!result.available) {
-          const item = items[index];
-          unavailableItems.push({
-            productId: item.productId,
-            requested: item.quantity,
-            available: result.availableQuantity || 0,
-          });
-        }
-      });
-
-      if (unavailableItems.length > 0) {
-        contextLogger.warn("Items not available", {
-          unavailableCount: unavailableItems.length,
-        });
-        return {
-          success: false,
-          error: {
-            code: OrderErrorCode.INSUFFICIENT_INVENTORY,
-            message: "Some items are not available in requested quantities",
-            details: unavailableItems,
-          },
-        };
-      }
-
-      contextLogger.info("All items available in inventory");
-      return { success: true };
-    } catch (error) {
-      contextLogger.error("Inventory check failed", {
-        error: error instanceof Error ? error.message : error,
-      });
-
-      return {
-        success: false,
-        error: {
-          code: OrderErrorCode.INVENTORY_SERVICE_UNAVAILABLE,
-          message: "Unable to check inventory at this time",
-        },
-      };
-    }
-  }
+    return {
+      success: false,
+      error: {
+        code: OrderErrorCode.INVENTORY_SERVICE_UNAVAILABLE,
+        message:
+          "Unable to process order at this time. Please try again later.",
+      },
+    };
+  };
 
   private async findOrderByIdempotencyKey(idempotencyKey: string) {
     return await db.query.orders.findFirst({
@@ -174,7 +131,7 @@ export class OrderService {
     request: CreateOrderRequest,
     totalAmount: number,
     idempotencyKey: string | undefined,
-    contextLogger: any
+    contextLogger: ContextLogger
   ) {
     return await db.transaction(async (tx) => {
       // Create order
@@ -216,12 +173,12 @@ export class OrderService {
     });
   }
 
-  private mapOrderToResponse(order: any): CreateOrderResponse {
+  private mapOrderToResponse(order: Order): CreateOrderResponse {
     return {
       orderId: order.id,
       status: order.status,
       customerId: order.customerId,
-      items: order.items,
+      items: order.items as OrderItem[],
       totalAmount: parseFloat(order.totalAmount),
       createdAt: order.createdAt.toISOString(),
     };
@@ -233,103 +190,151 @@ export class OrderService {
     eventId: string,
     correlationId?: string
   ): Promise<OrderUpdateResult> {
-    const contextLogger = logger.child({ correlationId, orderId });
+    const contextLogger = this.createLogger(correlationId, undefined);
 
     try {
       const result = await db.transaction(async (tx) => {
-        // Check if event already processed (idempotency)
-        const existingEvent = await tx.query.processedEvents.findFirst({
-          where: eq(processedEvents.eventId, eventId),
-        });
-
-        if (existingEvent) {
-          contextLogger.info("Event already processed, skipping", { eventId });
-          return {
-            success: false,
-            error: {
-              code: OrderErrorCode.DUPLICATE_EVENT,
-              message: "Event already processed",
-            },
-          };
-        }
-
-        // Get current order
-        const currentOrder = await tx.query.orders.findFirst({
-          where: eq(orders.id, orderId),
-        });
-
-        if (!currentOrder) {
-          return {
-            success: false,
-            error: {
-              code: OrderErrorCode.ORDER_NOT_FOUND,
-              message: `Order ${orderId} not found`,
-            },
-          };
-        }
-
-        // Validate status transition (forward-only)
-        if (
-          !this.isValidStatusTransition(
-            currentOrder.status as OrderStatus,
-            newStatus
-          )
-        ) {
-          contextLogger.warn("Invalid status transition attempted", {
-            currentStatus: currentOrder.status,
-            newStatus,
-          });
-          return {
-            success: false,
-            error: {
-              code: OrderErrorCode.INVALID_STATUS_TRANSITION,
-              message: `Cannot transition from ${currentOrder.status} to ${newStatus}`,
-            },
-          };
-        }
-
-        // Update order status
-        const [updatedOrder] = await tx
-          .update(orders)
-          .set({
-            status: newStatus,
-            updatedAt: new Date(),
-          })
-          .where(eq(orders.id, orderId))
-          .returning();
-
-        // Mark event as processed
-        await tx.insert(processedEvents).values({
+        const duplicateCheck = await this.checkDuplicateEvent(
+          tx,
           eventId,
-          eventType: `order.${newStatus.toLowerCase().replace(" ", "_")}`,
-        });
+          contextLogger
+        );
+        if (duplicateCheck) return duplicateCheck;
+
+        const currentOrder = await this.findOrderById(tx, orderId);
+        if (!currentOrder) return this.createOrderNotFoundError(orderId);
+
+        const transitionValidation = this.validateStatusTransition(
+          currentOrder,
+          newStatus,
+          contextLogger
+        );
+        if (transitionValidation) return transitionValidation;
+
+        const updatedOrder = await this.performStatusUpdate(
+          tx,
+          orderId,
+          newStatus,
+          eventId
+        );
 
         contextLogger.info("Order status updated", {
           oldStatus: currentOrder.status,
           newStatus: updatedOrder.status,
         });
 
-        return {
-          success: true,
-          order: updatedOrder,
-        };
+        return { success: true, order: updatedOrder };
       });
 
       return result;
     } catch (error) {
-      contextLogger.error("Order status update failed", {
-        error: error instanceof Error ? error.message : error,
-      });
+      return this.handleStatusUpdateError(error, contextLogger);
+    }
+  }
 
+  private checkDuplicateEvent = async (
+    tx: DatabaseTransaction,
+    eventId: string,
+    contextLogger: ContextLogger
+  ) => {
+    const existingEvent = await tx.query.processedEvents.findFirst({
+      where: eq(processedEvents.eventId, eventId),
+    });
+
+    if (existingEvent) {
+      contextLogger.info("Event already processed, skipping", { eventId });
       return {
         success: false,
         error: {
-          code: OrderErrorCode.INVENTORY_SERVICE_UNAVAILABLE,
-          message: "Unable to update order status at this time",
+          code: OrderErrorCode.DUPLICATE_EVENT,
+          message: "Event already processed",
         },
       };
     }
-  }
+    return null;
+  };
+
+  private findOrderById = async (tx: DatabaseTransaction, orderId: string) => {
+    return await tx.query.orders.findFirst({
+      where: eq(orders.id, orderId),
+    });
+  };
+
+  private createOrderNotFoundError = (orderId: string): OrderUpdateResult => {
+    return {
+      success: false,
+      error: {
+        code: OrderErrorCode.ORDER_NOT_FOUND,
+        message: `Order ${orderId} not found`,
+      },
+    };
+  };
+
+  private validateStatusTransition = (
+    currentOrder: any,
+    newStatus: OrderStatus,
+    contextLogger: ContextLogger
+  ) => {
+    if (
+      !this.isValidStatusTransition(
+        currentOrder.status as OrderStatus,
+        newStatus
+      )
+    ) {
+      contextLogger.warn("Invalid status transition attempted", {
+        currentStatus: currentOrder.status,
+        newStatus,
+      });
+      return {
+        success: false,
+        error: {
+          code: OrderErrorCode.INVALID_STATUS_TRANSITION,
+          message: `Cannot transition from ${currentOrder.status} to ${newStatus}`,
+        },
+      };
+    }
+    return null;
+  };
+
+  private performStatusUpdate = async (
+    tx: DatabaseTransaction,
+    orderId: string,
+    newStatus: OrderStatus,
+    eventId: string
+  ): Promise<Order> => {
+    const [updatedOrder] = await tx
+      .update(orders)
+      .set({
+        status: newStatus,
+        updatedAt: new Date(),
+      })
+      .where(eq(orders.id, orderId))
+      .returning();
+
+    await tx.insert(processedEvents).values({
+      eventId,
+      eventType: `order.${newStatus.toLowerCase().replace(" ", "_")}`,
+    });
+
+    return updatedOrder;
+  };
+
+  private handleStatusUpdateError = (
+    error: unknown,
+    contextLogger: ContextLogger
+  ): OrderUpdateResult => {
+    contextLogger.error("Order status update failed", {
+      error: error instanceof Error ? error.message : error,
+    });
+
+    return {
+      success: false,
+      error: {
+        code: OrderErrorCode.INVENTORY_SERVICE_UNAVAILABLE,
+        message: "Unable to update order status at this time",
+      },
+    };
+  };
 
   private isValidStatusTransition(
     currentStatus: OrderStatus,
