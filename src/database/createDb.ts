@@ -24,9 +24,9 @@ const createDatabase = async (): Promise<void> => {
 
     if (rows.length === 0) {
       await client.query(`CREATE DATABASE "${dbName}"`);
-      logger.info(`✅ Database "${dbName}" created`);
+      logger.info(`Database "${dbName}" created`);
     } else {
-      logger.info(`✅ Database "${dbName}" already exists`);
+      logger.info(` Database "${dbName}" already exists`);
     }
   } finally {
     await client.end();
@@ -35,7 +35,7 @@ const createDatabase = async (): Promise<void> => {
 
 if (require.main === module) {
   createDatabase().catch((error) => {
-    logger.error("❌ Failed to create database", { error });
+    logger.error("Failed to create database", { error });
     process.exit(1);
   });
 }

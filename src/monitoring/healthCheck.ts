@@ -18,16 +18,16 @@ export const checkDatabaseConnection = async (): Promise<void> => {
     const client = await pool.connect();
     await client.query("SELECT 1");
     client.release();
-    logger.info("✅ Database connection verified");
+    logger.info("Database connection verified");
   } catch (error: any | Error) {
     if (error?.code === "ECONNREFUSED") {
       logger.error(
-        "❌ Database connection failed. Run `pnpm run db:start` first.",
+        "Database connection failed. Run `pnpm run db:start` first.",
         { error }
       );
     }
     if (error?.code === "3D000") {
-      logger.error("❌ Database not found. Run `pnpm run db:setup` first.", {
+      logger.error("Database not found. Run `pnpm run db:setup` first.", {
         error,
       });
     }

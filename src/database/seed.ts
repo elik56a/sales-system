@@ -4,12 +4,12 @@ import { db } from "./connection";
 
 const createExtensions = async () => {
   await db.execute(sql`CREATE EXTENSION IF NOT EXISTS "uuid-ossp"`);
-  console.log("✅ Extensions created");
+  console.log("Extensions created");
 };
 
 const seedDatabase = async () => {
   try {
-    console.log("🌱 Seeding database with Drizzle...");
+    console.log("Seeding database with Drizzle...");
 
     await createExtensions();
 
@@ -19,7 +19,7 @@ const seedDatabase = async () => {
     console.log("🎉 Database seeded successfully with Drizzle");
     process.exit(0);
   } catch (error) {
-    console.error("❌ Database seeding failed:", error);
+    console.error("Database seeding failed:", error);
     process.exit(1);
   }
 };
